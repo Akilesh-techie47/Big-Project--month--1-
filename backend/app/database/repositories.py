@@ -39,8 +39,11 @@ class ProductRepository:
 
     def update(self, product: Product) -> Product:
         product.updated_at = __import__("datetime").datetime.utcnow()
+        payload = product.to_dict()
+        payload.pop("_id", None)
+        payload.pop("id", None)
         self.collection.update_one(
-            {"_id": product.id}, {"$set": product.to_dict()}
+            {"_id": product.id}, {"$set": payload}
         )
         logger.info(f"Updated product: {product.name}")
         return product
@@ -93,8 +96,18 @@ class ReviewRepository:
             logger.info(f"Bulk created {len(reviews)} reviews")
             return reviews
         except Exception as e:
-            logger.error(f"Bulk create failed: {e}")
-            raise
+            # ordered=False means some docs may have inserted despite duplicate-key errors.
+            # Fall back to per-document inserts so a single duplicate never fails the whole analysis.
+            logger.warning(f"Bulk insert hit errors, falling back to individual inserts: {e}")
+            inserted: List[Review] = []
+            for review in reviews:
+                try:
+                    created = self.create(review)
+                    if created is not None:
+                        inserted.append(created)
+                except Exception:
+                    continue
+            return inserted
 
     def find_by_product_id(
         self, product_id: ObjectId, limit: int = 50, skip: int = 0, sentiment: str = None
@@ -177,21 +190,30 @@ class AnalysisRepository:
 
     def find_by_product_id(self, product_id: ObjectId) -> Optional[Analysis]:
         data = self.collection.find_one({"product_id": product_id})
+        if not data:
+            # Backward compat: some docs stored product_id as string.
+            data = self.collection.find_one({"product_id": str(product_id)})
         return Analysis.from_dict(data) if data else None
 
     def update(self, analysis: Analysis) -> Analysis:
+        payload = analysis.to_dict()
+        payload.pop("_id", None)
+        payload.pop("id", None)
         self.collection.update_one(
             {"product_id": analysis.product_id},
-            {"$set": analysis.to_dict()},
+            {"$set": payload},
             upsert=True,
         )
         logger.info(f"Updated analysis for product: {analysis.product_id}")
         return analysis
 
     def upsert(self, analysis: Analysis) -> Analysis:
+        payload = analysis.to_dict()
+        payload.pop("_id", None)
+        payload.pop("id", None)
         self.collection.update_one(
             {"product_id": analysis.product_id},
-            {"$set": analysis.to_dict()},
+            {"$set": payload},
             upsert=True,
         )
         return analysis

@@ -34,8 +34,7 @@ class Analysis:
         if self.id:
             data["_id"] = str(self.id)
             data["id"] = str(self.id)
-        if isinstance(self.product_id, ObjectId):
-            data["product_id"] = str(self.product_id)
+        # Keep product_id as ObjectId in storage; API layer serializes it to str.
         return data
 
     @classmethod

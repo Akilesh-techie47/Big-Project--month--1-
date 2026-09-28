@@ -26,9 +26,19 @@ class FlipkartScraper(BaseScraper):
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
         chrome_options.add_argument("--window-size=1920,1080")
-        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-        self.driver = webdriver.Chrome(options=chrome_options)
+        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36")
+        try:
+            from selenium.webdriver.chrome.service import Service as ChromeService
+            from webdriver_manager.chrome import ChromeDriverManager
+            self.driver = webdriver.Chrome(
+                service=ChromeService(ChromeDriverManager().install()),
+                options=chrome_options,
+            )
+        except Exception:
+            logger.warning("webdriver-manager failed, falling back to system chromedriver")
+            self.driver = webdriver.Chrome(options=chrome_options)
         self.driver.set_page_load_timeout(self.timeout)
 
     def search_product(self, query: str) -> Optional[ScrapedProduct]:
@@ -68,7 +78,7 @@ class FlipkartScraper(BaseScraper):
             wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "[class*='_1AtVbE'], [class*='col']")))
 
             page = 1
-            max_pages = 5
+            max_pages = 3
             while len(reviews) < limit and page <= max_pages:
                 soup = BeautifulSoup(self.driver.page_source, "html.parser")
                 review_elements = soup.select("[class*='_1AtVbE'], .col")

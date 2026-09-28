@@ -50,26 +50,39 @@ export default function SearchPage() {
       });
     }, 2500);
 
+    let succeeded = false;
     try {
       const response = await scrapingApi.scrape(formData);
       clearInterval(stepInterval);
       setCurrentStep(STEPS.length - 1);
 
       if (response.data.success) {
-        addToast('Analysis complete! 🎉', 'success');
+        succeeded = true;
+        const payload = response.data.data || {};
+        if (payload.reviews_processed === 0) {
+          addToast('Product found, but no reviews were collected. Showing product page.', 'error');
+        } else if (payload.is_demo) {
+          addToast('Live scrape blocked — analysis completed on demo reviews 🎉', 'success');
+        } else {
+          addToast('Analysis complete! 🎉', 'success');
+        }
         setTimeout(() => {
-          navigate(`/product/${response.data.data.product_id}`);
-        }, 600);
+          navigate(`/product/${payload.product_id}`);
+          setSearching(false);
+        }, 1200);
       } else {
         addToast(response.data.error || 'Search failed', 'error');
         setCurrentStep(-1);
+        setSearching(false);
       }
     } catch (error) {
       clearInterval(stepInterval);
-      addToast(error.message || 'Search failed. Please try again.', 'error');
+      const msg = error?.data?.message || error.message || 'Search failed. Please try again.';
+      addToast(msg, 'error');
       setCurrentStep(-1);
-    } finally {
       setSearching(false);
+    } finally {
+      if (!succeeded) setSearching(false);
     }
   };
 

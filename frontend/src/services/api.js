@@ -31,7 +31,8 @@ export const productsApi = {
 };
 
 export const scrapingApi = {
-  scrape: (data) => api.post('/scrape', data),
+  // Live Selenium scraping can take 60-120s, so allow a long timeout for this call only.
+  scrape: (data) => api.post('/scrape', data, { timeout: 180000 }),
   getSources: () => api.get('/scrape/sources'),
 };
 
