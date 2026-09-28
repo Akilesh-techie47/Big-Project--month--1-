@@ -1,6 +1,7 @@
 import pytest
 import sys
 import os
+import json
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from app.sentiment.service import clean_text, analyze_sentiment, get_sentiment_label
