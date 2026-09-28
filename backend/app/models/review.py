@@ -32,7 +32,8 @@ class Review:
             "created_at": self.created_at,
         }
         if self.id:
-            data["_id"] = self.id
+            data["_id"] = str(self.id)
+            data["id"] = str(self.id)
         return data
 
     @classmethod

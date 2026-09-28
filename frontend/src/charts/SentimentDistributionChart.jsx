@@ -7,10 +7,14 @@ const COLORS = {
 };
 
 export default function SentimentDistributionChart({ data }) {
+  const positive = data?.positive_count ?? data?.positive ?? 0;
+  const neutral = data?.neutral_count ?? data?.neutral ?? 0;
+  const negative = data?.negative_count ?? data?.negative ?? 0;
+
   const chartData = [
-    { name: 'Positive', value: data?.positive_count || 0, color: COLORS.positive },
-    { name: 'Neutral', value: data?.neutral_count || 0, color: COLORS.neutral },
-    { name: 'Negative', value: data?.negative_count || 0, color: COLORS.negative },
+    { name: 'Positive', value: positive, color: COLORS.positive },
+    { name: 'Neutral', value: neutral, color: COLORS.neutral },
+    { name: 'Negative', value: negative, color: COLORS.negative },
   ].filter((d) => d.value > 0);
 
   const total = chartData.reduce((sum, d) => sum + d.value, 0);
@@ -47,11 +51,13 @@ export default function SentimentDistributionChart({ data }) {
             formatter={(value, name) => [value, name]}
             labelFormatter={(name) => name}
             contentStyle={{
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)',
-              boxShadow: 'var(--shadow-lg)',
+              background: '#1f293d',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '12px',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+              color: '#f8fafc',
             }}
+            itemStyle={{ color: '#f8fafc' }}
           />
           <Legend
             wrapperStyle={{ paddingTop: '1rem' }}

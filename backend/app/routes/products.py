@@ -90,6 +90,7 @@ def get_sentiment(product_id):
         return not_found_response("Product")
 
     analysis = analysis_repo.find_by_product_id(oid)
+    rating_distribution = review_repo.get_rating_distribution(oid)
     if not analysis:
         return success_response({
             "product_id": product_id,
@@ -101,9 +102,12 @@ def get_sentiment(product_id):
             "negative_percentage": 0,
             "average_rating": 0,
             "top_keywords": [],
+            "rating_distribution": rating_distribution,
         })
 
-    return success_response(analysis.to_dict())
+    data = analysis.to_dict()
+    data["rating_distribution"] = rating_distribution
+    return success_response(data)
 
 
 @products_bp.route("/products/<product_id>/trends", methods=["GET"])

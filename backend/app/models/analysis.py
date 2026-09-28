@@ -32,7 +32,10 @@ class Analysis:
             "created_at": self.created_at,
         }
         if self.id:
-            data["_id"] = self.id
+            data["_id"] = str(self.id)
+            data["id"] = str(self.id)
+        if isinstance(self.product_id, ObjectId):
+            data["product_id"] = str(self.product_id)
         return data
 
     @classmethod

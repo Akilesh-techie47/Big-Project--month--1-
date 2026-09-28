@@ -1,11 +1,25 @@
-from flask import jsonify
+from datetime import datetime, date
 from typing import Any, Optional
+from bson import ObjectId
+from flask import jsonify
+
+
+def _json_serializable(obj):
+    if isinstance(obj, ObjectId):
+        return str(obj)
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    if isinstance(obj, dict):
+        return {k: _json_serializable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [_json_serializable(item) for item in obj]
+    return obj
 
 
 def success_response(data: Any = None, message: str = "Success", status_code: int = 200):
     response = {"success": True, "message": message}
     if data is not None:
-        response["data"] = data
+        response["data"] = _json_serializable(data)
     return jsonify(response), status_code
 
 

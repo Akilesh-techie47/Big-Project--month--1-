@@ -26,7 +26,8 @@ class Product:
             "updated_at": self.updated_at,
         }
         if self.id:
-            data["_id"] = self.id
+            data["_id"] = str(self.id)
+            data["id"] = str(self.id)
         return data
 
     @classmethod

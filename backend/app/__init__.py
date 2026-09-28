@@ -25,10 +25,6 @@ def create_app(config_name: str = None) -> Flask:
     def log_request():
         logger.info(f"{request.method} {request.path}")
 
-    @app.teardown_appcontext
-    def teardown_db(exception):
-        close_db()
-
     from app.routes.health import health_bp
     from app.routes.products import products_bp
     from app.routes.scraping import scraping_bp

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { format } from 'date-fns';
-import { productsApi, statsApi } from '../services/api';
+import { productsApi } from '../services/api';
 import { useToast } from '../hooks/useToast.jsx';
 import SentimentDistributionChart from '../charts/SentimentDistributionChart';
 import SentimentTrendChart from '../charts/SentimentTrendChart';
@@ -9,7 +9,6 @@ import RatingDistributionChart from '../charts/RatingDistributionChart';
 import KeywordsChart from '../charts/KeywordsChart';
 import ReviewTable from '../components/ReviewTable';
 import ReviewFilters from '../components/ReviewFilters';
-import ProductCard from '../components/ProductCard';
 import './ProductDetail.css';
 
 export default function ProductDetail() {
@@ -24,6 +23,7 @@ export default function ProductDetail() {
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [notFound, setNotFound] = useState(false);
   const [filters, setFilters] = useState({ sentiment: '', rating: '' });
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0 });
 
@@ -32,26 +32,50 @@ export default function ProductDetail() {
   }, [id]);
 
   useEffect(() => {
-    loadReviews();
-  }, [id, filters, pagination.page]);
+    if (!loading && product) {
+      loadReviews();
+    }
+  }, [id, filters, pagination.page, product]);
 
   const loadProductData = async () => {
     try {
       setLoading(true);
-      const [productRes, sentimentRes, trendsRes, keywordsRes] = await Promise.all([
+      setNotFound(false);
+
+      const [productRes, sentimentRes, trendsRes, keywordsRes] = await Promise.allSettled([
         productsApi.getById(id),
         productsApi.getSentiment(id),
         productsApi.getTrends(id),
         productsApi.getKeywords(id),
       ]);
 
-      setProduct(productRes.data.data);
-      setSentiment(sentimentRes.data.data);
-      setTrends(trendsRes.data.data.trends || []);
-      setKeywords(keywordsRes.data.data.top_keywords || []);
+      if (productRes.status === 'rejected') {
+        const status = productRes.reason?.status;
+        if (status === 404 || status === 400 || status === 422) {
+          setNotFound(true);
+        } else {
+          addToast(productRes.reason?.message || 'Failed to load product', 'error');
+        }
+        return;
+      }
+
+      setProduct(productRes.value.data.data);
+
+      if (sentimentRes.status === 'fulfilled') {
+        setSentiment(sentimentRes.value.data.data);
+        setKeywords(sentimentRes.value.data.data?.top_keywords || []);
+      }
+
+      if (trendsRes.status === 'fulfilled') {
+        setTrends(trendsRes.value.data.data?.trends || []);
+      }
+
+      if (keywordsRes.status === 'fulfilled') {
+        setKeywords(keywordsRes.value.data.data?.top_keywords || keywords);
+      }
+
     } catch (error) {
       addToast(error.message || 'Failed to load product', 'error');
-      navigate('/');
     } finally {
       setLoading(false);
     }
@@ -63,11 +87,11 @@ export default function ProductDetail() {
       const params = {
         limit: pagination.limit,
         skip: (pagination.page - 1) * pagination.limit,
-        sentiment: filters.sentiment || undefined,
+        ...(filters.sentiment ? { sentiment: filters.sentiment } : {}),
       };
       const response = await productsApi.getReviews(id, params);
-      setReviews(response.data.data.reviews);
-      setPagination((prev) => ({ ...prev, total: response.data.data.total }));
+      setReviews(response.data.data.reviews || []);
+      setPagination((prev) => ({ ...prev, total: response.data.data.total || 0 }));
     } catch (error) {
       addToast(error.message || 'Failed to load reviews', 'error');
     } finally {
@@ -92,10 +116,28 @@ export default function ProductDetail() {
   if (loading) {
     return (
       <div className="product-detail">
-        <div className="skeleton" style={{ height: '200px' }} />
+        <div className="skeleton" style={{ height: '200px', borderRadius: 'var(--radius-lg)', marginBottom: '2rem' }} />
+        <div className="stat-cards-row">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="skeleton card" style={{ height: '120px' }} />
+          ))}
+        </div>
         <div className="charts-grid">
-          <div className="skeleton card" style={{ height: '350px' }} />
-          <div className="skeleton card" style={{ height: '350px' }} />
+          <div className="skeleton card" style={{ height: '380px' }} />
+          <div className="skeleton card" style={{ height: '380px' }} />
+        </div>
+      </div>
+    );
+  }
+
+  if (notFound) {
+    return (
+      <div className="product-detail">
+        <div className="empty-state card">
+          <div className="empty-icon">🔍</div>
+          <h2>Product Not Found</h2>
+          <p>The product you're looking for doesn't exist or the ID is invalid.</p>
+          <Link to="/history" className="btn btn-primary">Browse All Products</Link>
         </div>
       </div>
     );
@@ -105,81 +147,92 @@ export default function ProductDetail() {
     return (
       <div className="product-detail">
         <div className="empty-state card">
-          <h2>Product Not Found</h2>
-          <p>The requested product could not be found.</p>
+          <div className="empty-icon">⚠️</div>
+          <h2>Unable to Load Product</h2>
+          <p>Something went wrong. Please try again.</p>
+          <button className="btn btn-primary" onClick={loadProductData}>Retry</button>
         </div>
       </div>
     );
   }
 
-  const overallSentiment = () => {
+  const sentimentLabel = (() => {
     const pos = sentiment?.positive_percentage || 0;
     const neg = sentiment?.negative_percentage || 0;
     if (pos > neg) return 'positive';
     if (neg > pos) return 'negative';
     return 'neutral';
-  };
+  })();
 
-  const sentimentLabel = overallSentiment();
-  const sentimentColor = {
-    positive: 'var(--success)',
-    neutral: 'var(--warning)',
-    negative: 'var(--danger)',
-  }[sentimentLabel];
+  const sentimentStyles = {
+    positive: { bg: 'linear-gradient(135deg, #059669, #10b981)', shadow: 'rgba(16,185,129,0.4)' },
+    neutral:  { bg: 'linear-gradient(135deg, #d97706, #f59e0b)', shadow: 'rgba(245,158,11,0.4)' },
+    negative: { bg: 'linear-gradient(135deg, #dc2626, #ef4444)', shadow: 'rgba(239,68,68,0.4)' },
+  };
+  const ss = sentimentStyles[sentimentLabel];
 
   return (
     <div className="product-detail">
-      <header className="product-header">
-        <div>
+      <header className="product-page-header">
+        <div className="product-page-header-left">
+          <button className="back-btn" onClick={() => navigate(-1)} id="back-btn">
+            ← Back
+          </button>
           <h1>{product.name}</h1>
-          <div className="product-meta">
+          <div className="product-meta-row">
             <span className="source-badge">{product.source}</span>
-            <span>•</span>
-            <span>{product.review_count} reviews</span>
-            <span>•</span>
-            <span>Analyzed {product.created_at ? format(new Date(product.created_at), 'MMM d, yyyy') : 'recently'}</span>
+            <span className="meta-sep">•</span>
+            <span>{product.review_count ?? 0} reviews</span>
+            <span className="meta-sep">•</span>
+            <span>
+              {product.created_at
+                ? `Analyzed ${format(new Date(product.created_at), 'MMM d, yyyy')}`
+                : 'Recently analyzed'}
+            </span>
           </div>
         </div>
-        <div className="product-actions">
+        <div className="product-page-header-right">
           <span
-            className="overall-sentiment"
-            style={{ background: sentimentColor, color: 'white' }}
+            className="overall-sentiment-badge"
+            style={{ background: ss.bg, boxShadow: `0 6px 20px ${ss.shadow}` }}
           >
             {sentimentLabel.charAt(0).toUpperCase() + sentimentLabel.slice(1)}
           </span>
         </div>
       </header>
 
-      <div className="product-stats">
-        <div className="stat-card card">
-          <div className="stat-value" style={{ color: 'var(--success)' }}>
-            {(sentiment?.positive_percentage || 0).toFixed(1)}%
+      {sentiment && (
+        <div className="stat-cards-row">
+          <div className="pstat-card card">
+            <div className="pstat-value" style={{ color: '#34d399' }}>
+              {(sentiment.positive_percentage || 0).toFixed(1)}%
+            </div>
+            <div className="pstat-label">Positive</div>
+            <div className="pstat-detail">{sentiment.positive_count || 0} reviews</div>
           </div>
-          <div className="stat-label">Positive</div>
-          <div className="stat-detail">{sentiment?.positive_count || 0} reviews</div>
-        </div>
-        <div className="stat-card card">
-          <div className="stat-value" style={{ color: 'var(--warning)' }}>
-            {(sentiment?.neutral_percentage || 0).toFixed(1)}%
+          <div className="pstat-card card">
+            <div className="pstat-value" style={{ color: '#fbbf24' }}>
+              {(sentiment.neutral_percentage || 0).toFixed(1)}%
+            </div>
+            <div className="pstat-label">Neutral</div>
+            <div className="pstat-detail">{sentiment.neutral_count || 0} reviews</div>
           </div>
-          <div className="stat-label">Neutral</div>
-          <div className="stat-detail">{sentiment?.neutral_count || 0} reviews</div>
-        </div>
-        <div className="stat-card card">
-          <div className="stat-value" style={{ color: 'var(--danger)' }}>
-            {(sentiment?.negative_percentage || 0).toFixed(1)}%
+          <div className="pstat-card card">
+            <div className="pstat-value" style={{ color: '#f87171' }}>
+              {(sentiment.negative_percentage || 0).toFixed(1)}%
+            </div>
+            <div className="pstat-label">Negative</div>
+            <div className="pstat-detail">{sentiment.negative_count || 0} reviews</div>
           </div>
-          <div className="stat-label">Negative</div>
-          <div className="stat-detail">{sentiment?.negative_count || 0} reviews</div>
-        </div>
-        <div className="stat-card card">
-          <div className="stat-value" style={{ color: 'var(--primary)' }}>
-            {(sentiment?.average_rating || 0).toFixed(1)}
+          <div className="pstat-card card">
+            <div className="pstat-value" style={{ color: '#818cf8' }}>
+              {(sentiment.average_rating || 0).toFixed(1)}
+            </div>
+            <div className="pstat-label">Avg Rating</div>
+            <div className="pstat-detail">Out of 5.0</div>
           </div>
-          <div className="stat-label">Avg Rating</div>
-          <div className="stat-detail">Out of 5.0</div>
         </div>
-      </div>
+      )}
 
       <div className="charts-grid">
         <div className="chart-card card">
@@ -230,8 +283,9 @@ export default function ProductDetail() {
               className="btn btn-secondary"
               onClick={() => handlePageChange(pagination.page - 1)}
               disabled={pagination.page === 1}
+              id="prev-page-btn"
             >
-              Previous
+              ← Previous
             </button>
             <span className="page-info">
               Page {pagination.page} of {Math.ceil(pagination.total / pagination.limit)}
@@ -240,8 +294,9 @@ export default function ProductDetail() {
               className="btn btn-secondary"
               onClick={() => handlePageChange(pagination.page + 1)}
               disabled={pagination.page >= Math.ceil(pagination.total / pagination.limit)}
+              id="next-page-btn"
             >
-              Next
+              Next →
             </button>
           </div>
         )}
